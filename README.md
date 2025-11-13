@@ -2,6 +2,16 @@
 
 A lightweight persistent Key/Value database built in Java using only standard libraries.
 
+## Requirements
+- Java 17
+- Gradle
+
+## Build and Run
+```bash
+./gradlew clean build &&
+./gradlew run
+```
+
 ## Features
 - PUT, READ, READKEYRANGE, BATCHPUT, DELETE operations
 - Focus on low latency and crash safety

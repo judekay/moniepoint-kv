@@ -3,3 +3,7 @@ data/
 *.class
 *.log
 
+.gradle/
+build/
+.idea/
+*.iml

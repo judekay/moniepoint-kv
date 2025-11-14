@@ -1,7 +1,13 @@
 package kv;
 
+import kv.api.http.KeyValueHttpServerApp;
+
 public class MoniepointKeyValueStoreApplication {
-    public static void main(String[] args) {
-        System.out.println("Moniepoint Key Value Storage Server starting...");
+    public static void main(String[] args) throws Exception {
+        //todo move the port to config later on
+        int port = Integer.parseInt(System.getProperty("keyValue.port", "8080"));
+        String dir = System.getProperty("keyValue.dir", "./data");
+        System.out.printf("Moniepoint Key Value Storage Server starting on port %d, dir=%s%n", port, dir);
+        KeyValueHttpServerApp.start(port, dir);
     }
 }

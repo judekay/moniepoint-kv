@@ -1,7 +1,6 @@
 package kv.storage;
 
 import java.io.*;
-import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
@@ -10,6 +9,7 @@ public class SsTableHandler {
     private final File file;
     private final List<File> sstableFiles = new ArrayList<>();
     private final Map<File, SsTableKeyOffsetIndex> storageMapIndex = new HashMap<>();
+    private static final int MAX_SSTABLES_BEFORE_COMPACTION = 4;
 
     public SsTableHandler(File file) throws IOException {
         this.file = file;
@@ -70,6 +70,77 @@ public class SsTableHandler {
         }
         return ranges;
     }
+
+    public void compact() throws IOException {
+        if  (sstableFiles.size() <= MAX_SSTABLES_BEFORE_COMPACTION) return;
+        compactAllTables();
+    }
+
+    private void compactAllTables() throws IOException {
+        if (sstableFiles.isEmpty()) return;
+
+        Map<String, Entry> merged = new TreeMap<>();
+
+        for (File file : sstableFiles) {
+            Map<String, Entry> allEntries = readAllEntries(file);
+            for (Map.Entry<String, Entry> e : allEntries.entrySet()) {
+                merged.put(e.getKey(), e.getValue());
+            }
+        }
+
+        File compactedFile = newSsTableFile();
+        SsTableKeyOffsetIndex newIndex;
+        try (SsTableWriter writer = new SsTableWriter(compactedFile)) {
+            writer.writeFromMapSkippingDeletes(merged);
+            newIndex = writer.getOffsetIndex();
+        }
+
+        for (File oldFile : sstableFiles) {
+            oldFile.delete();
+        }
+        sstableFiles.clear();
+
+        registerSsTable(compactedFile, newIndex);
+    }
+
+    private Map<String, Entry> readAllEntries(File sstableFile) throws IOException {
+        Map<String, Entry> allEntries = new HashMap<>();
+
+        try (DataInputStream dataInputStream = new DataInputStream(new BufferedInputStream(new FileInputStream(sstableFile)))) {
+            while (true) {
+                try{
+                    int keyLength = dataInputStream.readInt();
+                    int valueLength = dataInputStream.readInt();
+
+                    if (keyLength < 0) {
+                        throw new IOException("Invalid key length: " + keyLength);
+                    }
+
+                    byte[] keyBytes = new byte[keyLength];
+                    dataInputStream.readFully(keyBytes);
+                    String key = new String(keyBytes, StandardCharsets.UTF_8);
+
+                    byte[] valueBytes = null;
+                    boolean deleted = false;
+
+                    if (valueLength < 0) {
+                        deleted = true;
+                    } else {
+                        valueBytes = new byte[valueLength];
+                        dataInputStream.readFully(valueBytes);
+                    }
+
+                    Entry entry = new Entry(valueBytes, deleted);
+                    allEntries.put(key, entry);
+                } catch (EOFException eofException) {
+                    break;
+                }
+            }
+        }
+
+       return allEntries;
+    }
+
 
     private SsTableKeyOffsetIndex buildIndexForExistingFile(File file) throws IOException {
         SsTableKeyOffsetIndex offsetIndex = new SsTableKeyOffsetIndex();

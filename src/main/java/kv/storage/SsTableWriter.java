@@ -48,6 +48,15 @@ public class SsTableWriter implements Closeable {
         }
     }
 
+    public void writeFromMapSkippingDeletes(Map<String, Entry> entries) throws IOException {
+        for (Map.Entry<String, Entry> e : entries.entrySet()) {
+            Entry entry = e.getValue();
+            if (entry == null) continue;
+            if (entry.deleted()) continue;
+            write(e.getKey(), entry);
+        }
+    }
+
     public SsTableKeyOffsetIndex getOffsetIndex() {
         return offsetIndex;
     }

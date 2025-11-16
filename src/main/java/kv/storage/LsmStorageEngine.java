@@ -168,6 +168,8 @@ public class LsmStorageEngine implements StorageEngine {
         }
 
         memTable.clear();
+
+        ssTableHandler.compact();
     }
 
     private void replayWriteAheadLogIntoMemTable() throws IOException {

@@ -4,15 +4,25 @@ import java.io.EOFException;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.util.Map;
 
 public class WriteAheadLog implements AutoCloseable{
     private final RandomAccessFile randomAccessFile;
+    private static final int DEFAULT_SYNC_PERIOD = 100;
+    private final int syncPeriod;
+    private int pendingEntriesSinceLastSync = 0;
 
     public static final byte OP_PUT = 0x01;
     public static final byte OP_DELETE = 0x02;
+
     public WriteAheadLog(File writeAheadLogFile) throws IOException {
+        this(writeAheadLogFile, DEFAULT_SYNC_PERIOD);
+    }
+
+    public WriteAheadLog(File writeAheadLogFile, int syncPeriod) throws IOException {
         this.randomAccessFile = new RandomAccessFile(writeAheadLogFile, "rw");
         this.randomAccessFile.seek(this.randomAccessFile.length());
+        this.syncPeriod = Math.max(1, syncPeriod);
     }
 
     public void appendPut(byte[] key, byte[] value) throws IOException {
@@ -23,8 +33,7 @@ public class WriteAheadLog implements AutoCloseable{
         randomAccessFile.write(key);
         randomAccessFile.write(value);
 
-        //todo we might need to batch this later for performance
-        randomAccessFile.getFD().sync();
+        onEntryAppended();
     }
 
     public void appendDelete(byte[] key) throws IOException {
@@ -34,7 +43,8 @@ public class WriteAheadLog implements AutoCloseable{
         //set to zero since no value bytes for delete
         randomAccessFile.writeInt(0);
         randomAccessFile.write(key);
-        randomAccessFile.getFD().sync();
+
+        onEntryAppended();
     }
 
     public void replay(WriteAheadLogReplayHandler handler) throws IOException {
@@ -83,17 +93,41 @@ public class WriteAheadLog implements AutoCloseable{
     }
 
     public void reset() throws IOException {
+        forceSync();
         randomAccessFile.setLength(0);
         randomAccessFile.seek(0);
     }
 
     @Override
     public void close() throws IOException {
-        randomAccessFile.close();
+        try {
+            forceSync();
+        } finally {
+            randomAccessFile.close();
+        }
     }
 
     @FunctionalInterface
     public interface WriteAheadLogReplayHandler {
         void onEntry(byte outputByte, byte[] key, byte[] value) throws IOException;
+    }
+
+    protected void doSync() throws IOException {
+        randomAccessFile.getFD().sync();
+    }
+
+    private void onEntryAppended() throws IOException {
+        pendingEntriesSinceLastSync++;
+        if (pendingEntriesSinceLastSync >= syncPeriod) {
+            doSync();
+            pendingEntriesSinceLastSync = 0;
+        }
+    }
+
+    public void forceSync() throws IOException {
+        if (pendingEntriesSinceLastSync > 0) {
+            doSync();
+            pendingEntriesSinceLastSync = 0;
+        }
     }
 }

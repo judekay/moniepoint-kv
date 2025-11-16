@@ -134,7 +134,7 @@ public class SsTableHandler {
 
                     int keyCompare  = entryKey.compareTo(key);
                     if (keyCompare == 0) {
-                        return new Entry(valueBytes);
+                        return new Entry(valueBytes, false);
                     } else if (keyCompare > 0) {
                         break;
                     }
@@ -182,7 +182,7 @@ public class SsTableHandler {
                     }
 
                     if (entryKey.compareTo(startKey) >= 0) {
-                        ranges.put(entryKey, new Entry(valueBytes));
+                        ranges.put(entryKey, new Entry(valueBytes, false));
                     }
                 } catch (EOFException e) {
                     break;

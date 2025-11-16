@@ -10,11 +10,7 @@ public interface StorageEngine extends AutoCloseable {
 
     Map<byte[], byte[]> readRange(byte[] startKey, byte[] endKey) throws IOException;
 
-    default void batchPut(Map<byte[], byte[]> values) throws IOException {
-        throw  new UnsupportedOperationException("BatchPut operation not supported yet");
-    }
+    void batchPut(Map<byte[], byte[]> entries) throws IOException;
 
-    default void delete(byte[] key) throws IOException {
-        throw  new UnsupportedOperationException("Delete operation not supported yet");
-    }
+    void delete(byte[] key) throws IOException;
 }

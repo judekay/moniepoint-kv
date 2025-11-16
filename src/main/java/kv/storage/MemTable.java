@@ -11,7 +11,7 @@ public class MemTable {
 
     public void put(String key, byte[] value)  {
         long entrySizeInBytes = key.length() + (value != null ? value.length : 0) + 32;
-        storageMap.put(key, new Entry(value));
+        storageMap.put(key, new Entry(value, false));
         sizeInBytes += entrySizeInBytes;
     }
 
@@ -21,6 +21,10 @@ public class MemTable {
 
     public NavigableMap<String, Entry> readKeyRange(String startKey, String endKey) {
         return storageMap.subMap(startKey, true, endKey, true);
+    }
+
+    public void delete(String key) {
+        storageMap.put(key, new Entry(null, true));
     }
 
     public int size() {

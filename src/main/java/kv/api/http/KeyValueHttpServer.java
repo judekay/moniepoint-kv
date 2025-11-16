@@ -13,6 +13,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 public class KeyValueHttpServer implements KeyValueServer {
@@ -34,12 +35,16 @@ public class KeyValueHttpServer implements KeyValueServer {
                 handlePut(exchange);
             } else if ("GET".equalsIgnoreCase(exchange.getRequestMethod())) {
                 handleRead(exchange);
-            } else {
+            } else if ("DELETE".equalsIgnoreCase(exchange.getRequestMethod())) {
+                handleDelete(exchange);
+            }
+            else {
                 sendResponse(exchange, 405, "Method not allowed");
             }
         });
 
         server.createContext("/keyvalue/range", this::handleReadKeyRange);
+        server.createContext("/keyvalue/batch", this::handleBatchPut);
         server.setExecutor(null);
         server.start();
         System.out.println("KeyValueHttpServer started on port " + port);
@@ -132,6 +137,61 @@ public class KeyValueHttpServer implements KeyValueServer {
         try (OutputStream os = exchange.getResponseBody()) {
             os.write(body);
         }
+    }
+
+    private void handleDelete(HttpExchange exchange) throws IOException {
+        Map<String, String> query = parseQuery(exchange.getRequestURI());
+        String key = query.get("key");
+
+        if (key == null || key.isEmpty()) {
+            sendResponse(exchange, 400, "Missing key parameter");
+            return;
+        }
+
+        facade.delete(key);
+        sendResponse(exchange, 200, "OK");
+    }
+
+    private void handleBatchPut(HttpExchange exchange) throws IOException {
+        try {
+            if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                sendResponse(exchange, 405, "Method Not Allowed");
+                return;
+            }
+
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+
+            Map<String, String> entries = getEntries(body);
+
+            if (entries.isEmpty()) {
+                sendResponse(exchange, 400, "No valid key=value pairs found in request body");
+                return;
+            }
+
+            facade.batchPut(entries);
+
+            sendResponse(exchange, 200, "OK");
+        } catch (Exception e) {
+            sendResponse(exchange, 500, "Internal Server Error: " + e.getMessage());
+        }
+    }
+
+    private static Map<String, String> getEntries(String body) {
+        Map<String, String> entries = new LinkedHashMap<>();
+
+        String[] lines = body.split("\\r?\\n");
+        for (String eachLine : lines) {
+            if (eachLine.isBlank()) continue;
+            int index = eachLine.indexOf('=');
+            if (index <= 0) {
+                //todo maybe return 400 since input is malformed
+                continue;
+            }
+            String key = eachLine.substring(0, index);
+            String value = eachLine.substring(index + 1);
+            entries.put(key, value);
+        }
+        return entries;
     }
 
     private Map<String, String> parseQuery(URI uri) {

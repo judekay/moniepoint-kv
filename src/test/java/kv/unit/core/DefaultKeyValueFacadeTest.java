@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.File;
 import java.nio.file.Files;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -81,4 +82,51 @@ class DefaultKeyValueFacadeTest {
         String value = api.read("key1");
         assertEquals("value2", value);
     }
+
+    @Test
+    void batchPutThroughFacadeWritesAllEntries() throws Exception {
+        setupFacade();
+
+        Map<String, String> entries = new LinkedHashMap<>();
+        entries.put("key1", "val1");
+        entries.put("key2", "val2");
+        entries.put("key3", "val3");
+
+        api.batchPut(entries);
+
+        assertEquals("val1", api.read("key1"));
+        assertEquals("val2", api.read("key2"));
+        assertEquals("val3", api.read("key3"));
+    }
+
+    @Test
+    void deleteThroughFacadeRemovesKey() throws Exception {
+        setupFacade();
+
+        api.put("key", "value");
+        assertEquals("value", api.read("key"));
+
+        api.delete("key");
+
+        assertNull(api.read("key"));
+    }
+
+    @Test
+    void deleteThroughFacadeRemovesKeyFromRange() throws Exception {
+        setupFacade();
+
+        api.put("a", "val1");
+        api.put("b", "val2");
+        api.put("c", "val3");
+
+        api.delete("b");
+
+        Map<String, String> result = api.readKeyRange("a", "c");
+
+        assertEquals(2, result.size());
+        assertTrue(result.containsKey("a"));
+        assertTrue(result.containsKey("c"));
+        assertFalse(result.containsKey("b"));
+    }
+
 }

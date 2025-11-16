@@ -42,4 +42,21 @@ public class DefaultKeyValueFacade implements KeyValueApi {
 
        return result;
     }
+
+    @Override
+    public void batchPut(Map<String, String> entries) throws IOException {
+        if (entries == null || entries.isEmpty()) return;
+        Map<byte[], byte[]> values = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : entries.entrySet()) {
+            if (entry.getKey() == null || entry.getValue() == null) continue;
+            values.put(entry.getKey().getBytes(StandardCharsets.UTF_8), entry.getValue().getBytes(StandardCharsets.UTF_8));
+        }
+        storageEngine.batchPut(values);
+    }
+
+    @Override
+    public void delete(String key) throws IOException {
+        if (key == null) return;
+        storageEngine.delete(key.getBytes(StandardCharsets.UTF_8));
+    }
 }

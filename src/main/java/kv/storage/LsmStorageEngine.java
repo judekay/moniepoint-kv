@@ -28,7 +28,7 @@ public class LsmStorageEngine implements StorageEngine {
         this.ssTableHandler = new SsTableHandler(dataFile);
         this.writeAheadLog = new WriteAheadLog(new File(dataFile, "writeAheadLog.log"));
 
-        //todo replay Write ahead log for crash recovery
+        replayWriteAheadLogIntoMemTable();
     }
     @Override
     public void put(byte[] key, byte[] value) throws IOException {
@@ -67,12 +67,12 @@ public class LsmStorageEngine implements StorageEngine {
             //read from Memtable first
             Entry inMemTable = memTable.get(key);
             if (inMemTable != null) {
-                return inMemTable.value();
+                return inMemTable.deleted() ? null : inMemTable.value();
             }
 
             // then from SStables
             Entry inSsTable = ssTableHandler.get(key);
-            if (inSsTable == null) {
+            if (inSsTable == null || inSsTable.deleted()) {
                 return null;
             }
             return inSsTable.value();
@@ -103,6 +103,7 @@ public class LsmStorageEngine implements StorageEngine {
             for (Map.Entry<String, Entry> entry : merged.entrySet()) {
                 Entry value = entry.getValue();
                 //handle deleted entry later
+                if (value.deleted()) continue;
                 result.put(
                         entry.getKey().getBytes(StandardCharsets.UTF_8),
                         value.value()
@@ -112,6 +113,38 @@ public class LsmStorageEngine implements StorageEngine {
             return result;
         } finally {
             readWriteLock.readLock().unlock();
+        }
+    }
+
+    @Override
+    public void batchPut(Map<byte[], byte[]> entries) throws IOException {
+        if (entries == null || entries.isEmpty()) return;
+
+        for (Map.Entry<byte[], byte[]> entry : entries.entrySet()) {
+            byte[] key = entry.getKey();
+            byte[] value = entry.getValue();
+            if  (key == null || value == null) continue;
+
+            put(key, value);
+        }
+    }
+
+    @Override
+    public void delete(byte[] key) throws IOException {
+        Objects.requireNonNull(key, "key must not be null");
+        String keyString = new String(key, StandardCharsets.UTF_8);
+
+        readWriteLock.writeLock().lock();
+        try{
+            writeAheadLog.appendDelete(key);
+            memTable.delete(keyString);
+
+            if (memTable.size() >= memtableMaxLimit) {
+                flushMemTableToSsTable();
+                writeAheadLog.reset();
+            }
+        } finally {
+            readWriteLock.writeLock().unlock();
         }
     }
 
@@ -135,5 +168,24 @@ public class LsmStorageEngine implements StorageEngine {
         }
 
         memTable.clear();
+    }
+
+    private void replayWriteAheadLogIntoMemTable() throws IOException {
+        readWriteLock.writeLock().lock();
+        try {
+            writeAheadLog.replay((outputByte, keyBytes, valueBytes) -> {
+                String key = new String(keyBytes, StandardCharsets.UTF_8);
+
+                if (outputByte == WriteAheadLog.OP_PUT) {
+                    memTable.put(key, valueBytes);
+                } else if (outputByte == WriteAheadLog.OP_DELETE) {
+                    memTable.delete(key);
+                }
+
+                //otherwise we ignore for now
+            });
+        } finally {
+            readWriteLock.writeLock().unlock();
+        }
     }
 }

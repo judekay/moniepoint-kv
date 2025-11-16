@@ -1,7 +1,5 @@
 package kv.storage;
 
-import kv.core.MemTable;
-
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
@@ -9,11 +7,15 @@ import java.util.Map;
 public class SsTableWriter implements Closeable {
 
     private final File file;
-    private final DataOutputStream out;
+    private final DataOutputStream dataOutputStream;
+    private final SsTableKeyOffsetIndex offsetIndex = new SsTableKeyOffsetIndex();
+
+    private static final int INDEX_SPARSE_RATE = 128;
+    private int counter = 0;
 
     public SsTableWriter(File file) throws IOException {
         this.file = file;
-        this.out = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(file)));
+        this.dataOutputStream = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(file)));
     }
 
     public File getFile() {
@@ -21,13 +23,23 @@ public class SsTableWriter implements Closeable {
     }
 
     public void write(String key, Entry entry) throws IOException {
+        long offset = dataOutputStream.size();
+
+        if (counter % INDEX_SPARSE_RATE == 0) {
+            offsetIndex.add(key, offset);
+        }
+        counter++;
+
         byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
         byte[] valueBytes = entry.value();
 
-        out.writeInt(keyBytes.length);
-        out.writeInt(valueBytes.length);
-        out.write(keyBytes);
-        out.write(valueBytes);
+        dataOutputStream.writeInt(keyBytes.length);
+        dataOutputStream.writeInt(valueBytes == null ? -1 : valueBytes.length);
+        dataOutputStream.write(keyBytes);
+
+        if (valueBytes != null) {
+            dataOutputStream.write(valueBytes);
+        }
     }
 
     public void writeFromMemTable(MemTable memTable) throws IOException {
@@ -36,9 +48,13 @@ public class SsTableWriter implements Closeable {
         }
     }
 
+    public SsTableKeyOffsetIndex getOffsetIndex() {
+        return offsetIndex;
+    }
+
     @Override
     public void close() throws IOException {
-        out.flush();
-        out.close();
+        dataOutputStream.flush();
+        dataOutputStream.close();
     }
 }

@@ -3,7 +3,7 @@ package kv.api.http;
 import kv.api.KeyValueServer;
 import kv.core.facade.DefaultKeyValueFacade;
 import kv.core.facade.KeyValueApi;
-import kv.core.LsmStorageEngine;
+import kv.storage.LsmStorageEngine;
 
 import java.io.File;
 

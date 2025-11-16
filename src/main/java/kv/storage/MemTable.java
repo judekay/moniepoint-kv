@@ -1,6 +1,4 @@
-package kv.core;
-
-import kv.storage.Entry;
+package kv.storage;
 
 import java.util.Map;
 import java.util.NavigableMap;
@@ -15,6 +13,14 @@ public class MemTable {
         long entrySizeInBytes = key.length() + (value != null ? value.length : 0) + 32;
         storageMap.put(key, new Entry(value));
         sizeInBytes += entrySizeInBytes;
+    }
+
+    public Entry get(String key) {
+        return storageMap.get(key);
+    }
+
+    public NavigableMap<String, Entry> readKeyRange(String startKey, String endKey) {
+        return storageMap.subMap(startKey, true, endKey, true);
     }
 
     public int size() {

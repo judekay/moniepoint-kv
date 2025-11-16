@@ -153,6 +153,75 @@ class KeyValueHttpServerTest {
         assertTrue(body.contains("\"entries\":[]"), "Expected empty entries array but got: " + body);
     }
 
+    @Test
+    void testBatchPutOverHttp() throws Exception {
+        setupServer();
+        HttpClient client = HttpClient.newHttpClient();
+
+        String body = String.join("\n",
+                "key1=value1",
+                "key2=value2"
+        );
+
+        HttpRequest batchReq = HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:" + PORT + "/keyvalue/batch"))
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+
+        HttpResponse<String> batchResp =
+                client.send(batchReq, HttpResponse.BodyHandlers.ofString());
+
+        assertEquals(200, batchResp.statusCode(), "batchPut should return 200");
+
+        HttpRequest getByKey1 = HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:" + PORT + "/keyvalue?key=key1"))
+                .GET()
+                .build();
+        HttpResponse<String> key1Resp =
+                client.send(getByKey1, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, key1Resp.statusCode());
+        assertEquals("value1", key1Resp.body());
+
+        HttpRequest getByKey2 = HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:" + PORT + "/keyvalue?key=key2"))
+                .GET()
+                .build();
+        HttpResponse<String> key2Resp =
+                client.send(getByKey2, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, key2Resp.statusCode());
+        assertEquals("value2", key2Resp.body());
+    }
+
+
+    @Test
+    void deleteRemovesKey() throws Exception {
+        setupServer();
+        HttpClient client = HttpClient.newHttpClient();
+
+        sendPut(client, "key", "value");
+
+        HttpRequest deleteReq = HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:" + PORT + "/keyvalue?key=key"))
+                .DELETE()
+                .build();
+
+        HttpResponse<String> deleteResp =
+                client.send(deleteReq, HttpResponse.BodyHandlers.ofString());
+
+        assertEquals(200, deleteResp.statusCode());
+
+        HttpRequest getReq = HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:" + PORT + "/keyvalue?key=key"))
+                .GET()
+                .build();
+
+        HttpResponse<String> getResp =
+                client.send(getReq, HttpResponse.BodyHandlers.ofString());
+
+        assertEquals(404, getResp.statusCode());
+    }
+
+
 
     private void sendPut(HttpClient client, String key, String value) throws Exception {
         HttpRequest putReq = HttpRequest.newBuilder()

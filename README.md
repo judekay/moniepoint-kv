@@ -1,6 +1,17 @@
 # Moniepoint Key Value Store
 
-A lightweight persistent Key/Value database built in Java using only standard libraries.
+A lightweight persistent, replicated, and LSM-based Key/Value store built in Java using only standard libraries.
+Supports:
+- PUT
+- READ
+- READKEYRANGE
+- BATCHPUT
+- DELETE
+- Durable crash-safe storage
+- Leader -> follower replication
+
+Designed for high write throughput, predictable read performance, and datasets larger than RAM.
+
 
 ## 1 Running the project
 ## Requirements
@@ -57,10 +68,19 @@ curl "http://localhost:8081/keyvalue?key=testMultiNode"
 Should return moniepointMultiNode if replication is working
 ```
 
-## 2 HTTP API
+## 2. HTTP API
+
+| Method | Endpoint                              | Description                               |
+|--------|---------------------------------------|-------------------------------------------|
+| PUT    | `/keyvalue?key=a`                     | Insert or update a single key             |
+| GET    | `/keyvalue?key=a`                     | Read a single key                         |
+| GET    | `/keyvalue/range?startKey=a&endKey=z` | Read a range of keys (lexicographically)  |
+| POST   | `/keyvalue/batch`                     | Batch insert (`key=value` per line)       |
+| DELETE | `/keyvalue?key=X`                     | Tombstone delete for a key                |
+
 
 ## 3 System Architecture
-The implementation uses a Log-Structured Merge Tree (LSM-Tree) architecture, a tyoe of design used in:
+The implementation uses a Log-Structured Merge Tree (LSM-Tree) architecture, a type of design used in:
 Cassandra, Elasticsearch segment writes, Kafka Streams state stores
 
 It satisfies the tasks strict constraints:
@@ -71,6 +91,33 @@ It satisfies the tasks strict constraints:
 - datasets larger than RAM
 - predictable behavior under load
 
+## Key Design Decisions & Trade-offs
+
+- **LSM-based engine instead of Bitcask**
+  - Handles large datasets: Bitcask requires the entire key index in memory; LSM only keeps the Memtable + sparse indexes, allowing data much larger than RAM.
+  - High write throughput: LSM optimizes for heavy write workloads through sequential WAL appends and immutable SSTables.
+  - Supports range reads: LSM stores keys in sorted order, making ReadKeyRange efficient. Bitcask does not support range queries natively.
+  - Predictable performance over time: Compaction keeps read paths predictable even as data grows.
+  - Fast crash recovery: WAL replay + existing SSTables yields stable recovery behavior.
+
+Overall, LSM provides better scalability and read/write performance for this task compared to Bitcask.
+- **Append-only WAL + immutable SSTables**
+  Prioritizes sequential I/O and predictable recovery over in-place updates.
+
+- **Async, best-effort replication**
+  Chosen for simplicity and high availability over strict consistency. The leader is the source of truth; replicas are eventually consistent.
+
+- **Single leader, fixed topology**
+  Avoids the complexity of leader election and consensus (Raft/Paxos) for this assignment’s scope, but the design can evolve towards Raft in the future.
+
+- **No sharding / partitioning**
+  The system runs as a single shard per node. Horizontal scalability via partitioning is deliberately left as future work.
+
+## Architecture Diagram
+
+![Architecture](docs/architecture.png)
+
+## Storage Engine Design
 ### 3.1 Write Implementation (PUT, BATCHPUT, DELETE)
 #### 1. Write Ahead Log
 Every write is first appended to a Write ahead log file. This enables
@@ -126,16 +173,25 @@ Replication Model: Leader -> Followers
 The leader forwards writes to replicas using:
 - Java HttpClient
 - non blocking so replication never blocks the client request in the form of fire and forget
+
+## 5 Transport
 Although HttpClient was implemented as the transport mechanism in this project, the interface is open for other transport implementation
 
 
-## 5 Test
+## 6 Test
 Run unit tests:
 ```shell
 ./gradlew test
 ```
+Tests cover:
+- Put
+- Read
+- Read key range
+- BatchPut
+- Delete
+- WAL replay
 
-## 6 Future Improvements
+## 7 Future Improvements
 ### Storage Engine
 - Background compaction to keep foreground latencies stable.
 - Bloom filters on SSTables to skip unnecessary disk reads.
@@ -151,6 +207,17 @@ Run unit tests:
 - Backpressure to protect the system under overload.
 - Per-request timeouts to prevent long hangs.
 
+### Consistency & Consensus
+The current design deliberately keeps consensus out of scope: there is a single configured leader that forwards writes to replicas on a best-effort basis. This provides simple, eventual consistency but does not handle automatic failover or split-brain scenarios.
+In a production-ready system, the next step would be to introduce a consensus protocol such as **Raft**:
+- **Automatic leader election & failover**: nodes vote to elect a leader and promote a follower if the leader becomes unavailable.
+- **Quorum-based commits**: writes are only considered committed once a majority of replicas have persisted the log entry.
+- **Fencing tokens / terms**: prevent an old leader from accepting writes after it has lost leadership, avoiding split-brain.
+- **Stronger consistency guarantees**: linearizable reads/writes and well-defined semantics across node failures and network partitions.
+
+These mechanisms would move the system from a simple, single-leader replicated store to a fully consistent, fault-tolerant distributed database.
+
+
 ### Observability
 - Metrics of compaction time, Write ahead log write rate, latency percentile (P95, P99)
 - Structured logs
@@ -163,3 +230,16 @@ Move all hardcoded values into config
 - Docker and Docker compose to run multi-node clusters easily
 - Data directory management for safer production operation 
 
+## Limitations & Non-goals
+
+- No automatic failover / consensus
+  If the leader dies, a new leader must be chosen manually. Protocols like Raft are intentionally out of scope.
+
+- Eventual consistency on replicas
+  Replicas might briefly serve stale data. Strong consistency across nodes is not guaranteed.
+
+- No authentication / encryption
+  The focus is on storage and replication mechanics, not security. In a real deployment, TLS, authN/authZ, and network isolation would be required.
+
+- No strict SLAs
+  There is no adaptive backpressure or autoscaling; the system is not tuned for hard latency/availability SLOs yet.

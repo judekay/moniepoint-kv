@@ -18,21 +18,28 @@ public class KeyValueHttpServerApp {
         LsmStorageEngine lsmStorageEngine = new LsmStorageEngine(dir);
         KeyValueApi facade = new DefaultKeyValueFacade(lsmStorageEngine);
 
-        List<String> replicaUrls = List.of(
-                "http://localhost:8081",
-                "http://localhost:8082"
-        );
         KeyValueApi api;
+        //hardcoded for this task and to ensure replication is only for the leader node
+        if (port == 8080) {
+            List<String> replicaUrls = List.of(
+                    "http://localhost:8081",
+                    "http://localhost:8082"
+            );
+            System.out.printf("Starting the Leader node on port %d, dir=%s, replicas=%s%n", port, dirPath, replicaUrls);
 
-        ReplicationClient replicator = new ReplicationClient(replicaUrls);
-        api = new ReplicationKeyValueApi(facade, replicator);
+            ReplicationClient replicator = new ReplicationClient(replicaUrls);
+            api = new ReplicationKeyValueApi(facade, replicator);
+        } else {
+            System.out.printf("Starting replica/standalone node on port %d, dir=%s%n", port, dirPath);
+            api = facade;
+        }
         KeyValueServer server = new KeyValueHttpServer(api, port);
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             try{
                 server.stop();
                 lsmStorageEngine.close();
-            } catch (Exception exception) { }
+            } catch (Exception ignored) { }
         }));
         server.start();
     }

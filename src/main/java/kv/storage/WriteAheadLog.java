@@ -59,15 +59,25 @@ public class WriteAheadLog implements AutoCloseable{
                     break;
                 }
 
-                int keyLength = randomAccessFile.readInt();
-                int valueLength = randomAccessFile.readInt();
+                int keyLength;
+                int valueLength;
+                try {
+                    keyLength = randomAccessFile.readInt();
+                    valueLength = randomAccessFile.readInt();
+                } catch (EOFException eof) {
+                    break;
+                }
 
                 if (keyLength < 0) {
                     throw new IOException("Invalid write ahead log");
                 }
 
                 byte[] key = new byte[keyLength];
-                randomAccessFile.readFully(key);
+                try {
+                    randomAccessFile.readFully(key);
+                } catch (EOFException eof) {
+                    break;
+                }
 
                 byte[] value = null;
                 if (outputByte == OP_PUT) {
@@ -75,10 +85,18 @@ public class WriteAheadLog implements AutoCloseable{
                         throw new IOException("Invalid write ahead log valueLength for PUT");
                     }
                     value = new byte[valueLength];
-                    randomAccessFile.readFully(value);
+                    try {
+                        randomAccessFile.readFully(value);
+                    } catch (EOFException eof) {
+                        break;
+                    }
                 } else if (outputByte == OP_DELETE) {
                     if (valueLength > 0) {
-                        randomAccessFile.skipBytes(valueLength);
+                        try {
+                            randomAccessFile.skipBytes(valueLength);
+                        } catch (EOFException eof) {
+                            break;
+                        }
                     }
                 } else {
                     throw new IOException("Invalid write ahead unknown outputByte" + outputByte);

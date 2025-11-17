@@ -70,13 +70,73 @@ Should return moniepointMultiNode if replication is working
 
 ## 2. HTTP API
 
-| Method | Endpoint                              | Description                               |
-|--------|---------------------------------------|-------------------------------------------|
-| PUT    | `/keyvalue?key=a`                     | Insert or update a single key             |
-| GET    | `/keyvalue?key=a`                     | Read a single key                         |
-| GET    | `/keyvalue/range?startKey=a&endKey=z` | Read a range of keys (lexicographically)  |
-| POST   | `/keyvalue/batch`                     | Batch insert (`key=value` per line)       |
-| DELETE | `/keyvalue?key=X`                     | Tombstone delete for a key                |
+### 2.1 Current Endpoints
+
+The current API is intentionally minimal to keep the focus on the LSM storage
+engine and replication. Keys are passed as query parameters, and values are sent
+as raw request bodies.
+
+| Method | Endpoint                              | Description                                | Request Body Example              | Example Response               |
+|--------|---------------------------------------|--------------------------------------------|-----------------------------------|--------------------------------|         
+| PUT    | `/keyvalue?key=a`                     | Create or update a key/value               | `moniepoint`                      | `OK`                           |
+| GET    | `/keyvalue?key=a`                     | Read a single key                          | _none_                            | `moniepoint`                   | 
+| GET    | `/keyvalue/range?startKey=a&endKey=z` | Read a range of keys (lexicographically)   | _none_                            | `{"a":"v1","b":"v2","c":"v3"}` | 
+| POST   | `/keyvalue/batch`                     | Batch insert/update (`key=value` per line) | `key1=val1\nkey2=val2\nkey3=val3` | `OK`                           | 
+| DELETE | `/keyvalue?key=a`                     | Tombstone delete for a key                 | _none_                            | `OK`                           |
+
+### 2.2 Production-Ready API (Ideal Design)
+
+In a real production service, the API would follow standard REST conventions,
+with JSON or binary request bodies, clear content types, and structured responses.
+
+#### **Ideal production-ready endpoints**
+
+
+
+## 2.1 Production-Ready API (Ideal Design)
+
+A real production KV service would use structured JSON request bodies,
+proper REST semantics, and predictable structured responses.
+
+### Ideal Production-Ready Endpoints
+
+| Method | Endpoint           | Description                                | Request Body Example                                          | Example Json Response                                                           |                            
+|--------|--------------------|--------------------------------------------|---------------------------------------------------------------|---------------------------------------------------------------------------------|
+| POST   | `/keyvalue`        | Create or update a key/value               | `{ "key": "k1", "value": "v1" }`                              | `{ "status": "success", "key": "k1" }`                                          |            
+| GET    | `/keyvalue/k1`     | Read a single key                          | _none_                                                        | `{ "key": "k1", "value": "v1" }`                                                |
+| POST   | `/keyvalue/batch`  | Batch insert/update                        | `{ "items": [{ "key": "...", "value": "..." }] }`             | `{ "status": "success", "processed": 2 }`                                       |
+| GET    | `/keyvalue/range`  | Read a range of keys (lexicographically)   | _none_ (use query params for range bounds: startKey & endKey) | `{ "items": [{ "key": "a", "value": "v1" }, { "key": "b", "value": "v2" }] }`   |
+| DELETE | `/keyvalue/k1`     | Tombstone delete for a key                 | _none_                                                        | `{ "status": "deleted", "key": "k1" }`                                          |
+
+### Example JSON Error Responses
+| Scenario    | Example JSON Response                   |
+|-------------|-----------------------------------------|
+| Missing key | `{ "error": "key is required" }`        |
+| Not found   | `{ "error": "key not found" }`          |
+| Bad payload | `{ "error": "invalid request body" }`   |
+
+#### **Reasons this is better for production**
+- Safer for binary data (values not restricted by URL encoding)
+- Avoids issues with large query strings
+- Enables schema validation and better error handling
+- Allows versioning (`/v1/keyvalue`)
+- Plays well with API gateways, load balancers, and caching layers
+- Follows common patterns used by cloud KV services (DynamoDB, Redis Enterprise REST, etc.)
+
+#### **Why the simplified API was chosen here**
+The assignment focuses specifically on:
+
+- storage engine internals
+- persistence
+- crash recovery
+- range queries
+- replication
+
+So, to keep the implementation concise and highlight the core LSM architecture,
+the API uses a minimal request format.  
+The system is layered such that the HTTP interface can be upgraded without
+changing any storage engine logic.
+
 
 
 ## 3 System Architecture

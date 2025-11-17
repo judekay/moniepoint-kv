@@ -102,7 +102,6 @@ public class LsmStorageEngine implements StorageEngine {
             Map<byte[], byte[]> result = new LinkedHashMap<>();
             for (Map.Entry<String, Entry> entry : merged.entrySet()) {
                 Entry value = entry.getValue();
-                //handle deleted entry later
                 if (value.deleted()) continue;
                 result.put(
                         entry.getKey().getBytes(StandardCharsets.UTF_8),

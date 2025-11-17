@@ -68,6 +68,16 @@ curl "http://localhost:8081/keyvalue?key=testMultiNode"
 Should return moniepointMultiNode if replication is working
 ```
 
+### Resource Usage Notes
+
+- Each node writes data into its own folder (`data-8080`, `data-8081`, `data-8082`).
+- For normal manual testing, these directories remain small (KBs–MBs).
+- If you run many experiments or long-lived tests, you can safely remove them with:
+
+```bash
+rm -rf data-8080 data-8081 data-8082
+```
+
 ## 2. HTTP API
 
 ### 2.1 Current Endpoints
@@ -138,7 +148,6 @@ The system is layered such that the HTTP interface can be upgraded without
 changing any storage engine logic.
 
 
-
 ## 3 System Architecture
 The implementation uses a Log-Structured Merge Tree (LSM-Tree) architecture, a type of design used in:
 Cassandra, Elasticsearch segment writes, Kafka Streams state stores
@@ -192,7 +201,7 @@ After the write ahead log append, then we have
 - memtable is small and bounded
 - extremely fast writes (O(logn))
 
-#### 3. Sstable
+#### 3. SStable
 When memtable reaches max size:
 - sorted entries are flushed into a new immutable SSTable file
 - Write ahead log is truncated

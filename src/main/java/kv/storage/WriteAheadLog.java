@@ -4,7 +4,6 @@ import java.io.EOFException;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.util.Map;
 
 public class WriteAheadLog implements AutoCloseable{
     private final RandomAccessFile randomAccessFile;
